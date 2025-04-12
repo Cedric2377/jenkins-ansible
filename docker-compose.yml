@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    user: root
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock  # Required for Jenkins to run Docker commands
+      - ./ansible:/home/jenkins/ansible  # Mount Ansible playbooks from local system
+    ports:
+      - "8080:8080"  # Jenkins UI
+      - "50000:50000"  # Jenkins agent connection port
+
+  ansible:
+    image: python:3.9-slim
+    container_name: ansible-container
+    volumes:
+      - ./ansible:/home/ansible  # Mount Ansible playbooks
+    entrypoint: >
+      bash -c "
+        apt-get update &&
+        apt-get install -y ansible &&
+        tail -f /dev/null"
+    networks:
+      - default
+
+volumes:
+  jenkins_home:
+
+  
+#Explanation:
+#Jenkins Service:
+#The Jenkins service uses the official Jenkins LTS image.
+#It sets up Jenkins with the setup wizard disabled (JAVA_OPTS=-Djenkins.install.runSetupWizard=false) so you don’t have to go through the initial setup manually.
+#It mounts the /var/run/docker.sock file to allow Jenkins to execute Docker commands.
+#It mounts a local ./ansible directory to the Jenkins container where your Ansible playbooks will be stored.
+#Ansible Service:
+#This is a side container to install Ansible on a Python base image.
+#It runs an installation command to install Ansible and then keeps the container running (tail -f /dev/null).
+#Volumes:
+#The jenkins_home volume is used to persist Jenkins data across container restarts.
+#The ./ansible directory is mounted in both containers to share the Ansible playbooks.
+##Ports:
+#Jenkins UI is exposed on port 8080.
+#Port 50000 is exposed for Jenkins to connect to agent nodes if necessary.
