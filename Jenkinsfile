@@ -2,22 +2,26 @@ pipeline {
     agent any
 
     environment {
-        ANSIBLE_HOST_KEY_CHECKING = "False"  // Disable host key checking (for automation)
+        // Set up environment variables for Ansible
+        ANSIBLE_HOST_KEY_CHECKING = "False"   // Disable SSH host key checking
+        ANSIBLE_INVENTORY = "/home/jenkins/ansible/inventory"  // Path to the inventory file in the Jenkins container
+        EMAIL_RECIPIENTS = "youremail@example.com"  // Replace with your email address
     }
 
     stages {
         stage('Checkout') {
             steps {
-                // Checkout the repository (if using SCM)
+                // Checkout the Git repository containing the Jenkinsfile and Ansible playbook
                 git 'https://github.com/your-repo/your-project.git'
             }
         }
 
-        stage('Install Ansible') {
+        stage('Install Dependencies') {
             steps {
                 script {
-                    // Install Ansible inside the Jenkins container (if necessary)
-                    sh 'docker exec ansible-container apt-get update && apt-get install -y ansible'
+                    // Install Ansible if it's not already installed in the Jenkins container
+                    // Run this step if your Jenkins container doesn't have Ansible pre-installed
+                    sh 'apt-get update && apt-get install -y ansible'
                 }
             }
         }
@@ -39,17 +43,8 @@ pipeline {
         stage('Run Ansible Playbook') {
             steps {
                 script {
-                    // Run the Ansible playbook using the Ansible container
-                    sh 'docker exec ansible-container ansible-playbook /home/ansible/deploy.yml -i "remote_host,"'
-                }
-            }
-        }
-
-        stage('Deploy to Server') {
-            steps {
-                script {
-                    // Perform deployment on remote server via Ansible
-                    sh 'docker exec ansible-container ansible-playbook /home/ansible/deploy.yml -i "remote_host,"'
+                    // Run the Ansible playbook using the inventory file
+                    sh 'ansible-playbook /home/jenkins/ansible/deploy.yml -i $ANSIBLE_INVENTORY'
                 }
             }
         }
@@ -57,10 +52,35 @@ pipeline {
 
     post {
         success {
-            echo 'Deployment successful!'
+            // Send email on successful build
+            emailext (
+                subject: "SUCCESS: Build ${currentBuild.fullDisplayName}",
+                body: "The Ansible playbook executed successfully and deployment was completed.\n\nPlease visit ${env.BUILD_URL} for more details.",
+                to: "${EMAIL_RECIPIENTS}"
+            )
+            echo 'Playbook executed successfully, deployment completed.'
         }
         failure {
-            echo 'Deployment failed!'
+            // Send email on failure
+            emailext (
+                subject: "FAILURE: Build ${currentBuild.fullDisplayName}",
+                body: "An error occurred during playbook execution. The deployment failed.\n\nPlease visit ${env.BUILD_URL} to review the logs and resolve the issues.",
+                to: "${EMAIL_RECIPIENTS}"
+            )
+            echo 'An error occurred during playbook execution, deployment failed.'
+        }
+        unstable {
+            // Send email for unstable builds (e.g., test failures)
+            emailext (
+                subject: "UNSTABLE: Build ${currentBuild.fullDisplayName}",
+                body: "The build ${currentBuild.fullDisplayName} was unstable.\n\nPlease visit ${env.BUILD_URL} to review the logs.",
+                to: "${EMAIL_RECIPIENTS}"
+            )
+            echo 'The build was unstable, review the logs for more information.'
+        }
+        always {
+            // Always send an email after the build (can be used for additional cleanup tasks or notifications)
+            echo 'Sending final email notification...'
         }
     }
 }
@@ -86,8 +106,5 @@ Before you can use emailext in the pipeline, ensure the email configuration is s
 2.	Configure SMTP Server:
 o	Go to Manage Jenkins > Configure System.
 o	Scroll down to E-mail Notification and fill in the SMTP server settings (e.g., Gmail, SMTP server, authentication credentials).
-Step 5: Testing the Setup
-1.	Commit and Push Changes: Ensure that your Jenkinsfile (with the email configuration) is pushed to your Git repository.
-2.	Run the Pipeline: Trigger the Jenkins pipeline manually or on code changes.
-3.	Check Email Notifications: Based on the success or failure of the build, you should receive email notifications with the subject and body as defined in your Jenkinsfile.
+
 */
